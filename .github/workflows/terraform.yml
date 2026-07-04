@@ -1,0 +1,34 @@
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Import AWS Secrets From Vault
+      uses: hashicorp/vault-action@v3
+      with:
+        url: ${{ secrets.VAULT_ADDR }}
+        method: jwt
+        role: github-actions-role
+        secrets: |
+          aws/creds/gha-s3-role access_key | AWS_ACCESS_KEY_ID ;
+          aws/creds/gha-s3-role secret_key | AWS_SECRET_ACCESS_KEY
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    - name: Terraform Init
+      run: terraform init
+
+    - name: Terraform Apply
+      run: terraform apply -auto-approve
