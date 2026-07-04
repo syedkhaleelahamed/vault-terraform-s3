@@ -16,8 +16,9 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # --- THIS IS WHERE THE UPDATED VAULT STEP GOES ---
+      # 1. Fetch from Vault and name this step 'vault'
       - name: Import AWS Secrets From Vault
+        id: vault
         uses: hashicorp/vault-action@v3
         with:
           url: ${{ secrets.VAULT_ADDR }}
@@ -27,7 +28,13 @@ jobs:
             aws/creds/gha-s3-role access_key | AWS_ACCESS_KEY_ID ;
             aws/creds/gha-s3-role secret_key | AWS_SECRET_ACCESS_KEY
 
-      # This step verifies the runner successfully received the dynamic keys
+      # 2. Bind the Vault outputs explicitly to the Runner Environment
+      - name: Export Credentials to Runner Environment
+        run: |
+          echo "AWS_ACCESS_KEY_ID=${{ steps.vault.outputs.AWS_ACCESS_KEY_ID }}" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=${{ steps.vault.outputs.AWS_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
+
+      # 3. Check if AWS validates them now
       - name: Verify AWS Credentials
         run: |
           aws sts get-caller-identity
