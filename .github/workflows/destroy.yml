@@ -1,49 +1,47 @@
-name: "Terraform Destroy"
-
 on:
-  workflow_dispatch: # Allows manual trigger from GitHub UI
-
-permissions:
-  id-token: write
-  contents: read
+  workflow_dispatch:
 
 jobs:
-  terraform-destroy:
-    name: "Vault Authenticate & Destroy"
+  terraform:
     runs-on: ubuntu-latest
+    
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    - name: Checkout Repository
+      uses: actions/checkout@v4
 
-      # 1. Fetch from Vault and name this step 'vault'
-      - name: Import AWS Secrets From Vault
-        id: vault
-        uses: hashicorp/vault-action@v3
-        with:
-          url: ${{ secrets.VAULT_ADDR }}
-          method: jwt
-          role: github-actions-role              
-          secrets: |
-            aws/creds/gha-s3-role access_key | AWS_ACCESS_KEY_ID ;
-            aws/creds/gha-s3-role secret_key | AWS_SECRET_ACCESS_KEY
+    - name: Import AWS Secrets From Vault
+      uses: hashicorp/vault-action@v3
+      with:
+        url: ${{ secrets.VAULT_ADDR }}
+        method: jwt
+        role: github-actions-role
+        secrets: |
+          aws/creds/gha-s3-role access_key | AWS_ACCESS_KEY_ID ;
+          aws/creds/gha-s3-role secret_key | AWS_SECRET_ACCESS_KEY
 
-      # 2. Bind the Vault outputs explicitly to the Runner Environment
-      - name: Export Credentials to Runner Environment
-        run: |
-          echo "AWS_ACCESS_KEY_ID=${{ steps.vault.outputs.AWS_ACCESS_KEY_ID }}" >> $GITHUB_ENV
-          echo "AWS_SECRET_ACCESS_KEY=${{ steps.vault.outputs.AWS_SECRET_ACCESS_KEY }}" >> $GITHUB_ENV
+    - name: Checkout Terraform Configuration
+      uses: actions/checkout@v4
 
-      # 3. Check if AWS validates them now
-      - name: Verify AWS Credentials
-        run: |
-          aws sts get-caller-identity
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: latest
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+    - name: Terraform Init
+      working-directory: ./terraform
+      run: terraform init -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" -backend-config="key=terraform.tfstate" -backend-config="region=us-east-1"
+      env:
+        AWS_ACCESS_KEY_ID: ${{ env.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ env.AWS_SECRET_ACCESS_KEY }}
 
-      - name: Terraform Init
-        run: terraform init
+    - name: Terraform Destroy
+      working-directory: ./terraform
+      run: terraform destroy -auto-approve
+      env:
+        AWS_ACCESS_KEY_ID: ${{ env.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ env.AWS_SECRET_ACCESS_KEY }}
 
-      - name: Terraform Destroy
-        run: terraform destroy -auto-approve
